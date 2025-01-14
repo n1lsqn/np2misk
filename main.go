@@ -24,7 +24,7 @@ func postToMisskey(message string) error {
 	requestData := map[string]string{
 		"i":          os.Getenv("MISSKEY_ACCESS_TOKEN"),
 		"text":       message,
-		"visibility": "home",
+		"visibility": "public",
 	}
 
 	jsonData, err := json.Marshal(requestData)
@@ -87,7 +87,7 @@ func main() {
 			if is_playing {
 				if last_title == "" || title != last_title {
 					if progress > 5000 {
-						message := fmt.Sprintf("🎵 #なうぷれ : %s / %s (%s)\n%s", title, artist, album, url)
+						message := fmt.Sprintf("🎵 #にるぷれ : %s / %s (%s)\n%s", title, artist, album, url)
 						fmt.Println(message)
 
 						err := postToMisskey(message)
