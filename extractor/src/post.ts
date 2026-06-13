@@ -83,13 +83,16 @@ async function getUserId(username: string): Promise<string> {
   return response.data.id;
 }
 
-async function getUserNotes(userId: string, limit = 100): Promise<MisskeyNote[]> {
+async function getUserNotes(userId: string, limit = 100, untilId?: string): Promise<MisskeyNote[]> {
   const payload: any = {
     userId,
-    limit,
+    limit: Math.min(limit, 100), // APIの制限で最大100
     includeMyRenotes: false,
     includeReplies: false,
   };
+  if (untilId) {
+    payload.untilId = untilId;
+  }
   if (MISSKEY_ACCESS_TOKEN) {
     payload.i = MISSKEY_ACCESS_TOKEN;
   }
@@ -107,7 +110,25 @@ function cleanText(text: string): string {
 async function fetchAndGenerateSystemPrompt(): Promise<string> {
   console.log(`[Misskey] Fetching latest posts for @${USERNAME} to analyze style...`);
   const userId = await getUserId(USERNAME);
-  const notes = await getUserNotes(userId, 100);
+  
+  // 1回目：最新の100件を取得
+  let notes = await getUserNotes(userId, 100);
+  console.log(`[Misskey] Fetched first ${notes.length} notes.`);
+  
+  // 100件取得できていれば、最後のIDを基準にして次の100件（計200件）を取得
+  if (notes.length === 100) {
+    const lastNoteId = notes[notes.length - 1].id;
+    try {
+      console.log(`[Misskey] Fetching next page (until: ${lastNoteId})...`);
+      const nextPageNotes = await getUserNotes(userId, 100, lastNoteId);
+      console.log(`[Misskey] Fetched next ${nextPageNotes.length} notes.`);
+      notes = notes.concat(nextPageNotes);
+    } catch (pageError: any) {
+      console.warn('[Misskey] Failed to fetch second page of notes:', pageError.message);
+    }
+  }
+  
+  console.log(`[Misskey] Total notes fetched for analysis: ${notes.length}`);
 
   const cleanNotes: string[] = [];
   for (const note of notes) {
