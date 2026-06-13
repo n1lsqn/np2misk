@@ -32,6 +32,7 @@ interface MisskeyNote {
   user: MisskeyUser;
   replyId: string | null;
   renoteId: string | null;
+  visibility?: string;
 }
 
 interface ServerStatus {
@@ -112,6 +113,11 @@ async function fetchAndGenerateSystemPrompt(): Promise<string> {
   for (const note of notes) {
     if (note.renoteId || note.replyId) continue;
     
+    // public もしくは home 以外のノート（フォロワー限定など）を除外
+    if (note.visibility && note.visibility !== 'public' && note.visibility !== 'home') {
+      continue;
+    }
+    
     const rawText = note.text;
     if (!rawText) continue;
 
@@ -176,13 +182,13 @@ async function generateText(systemPrompt: string, status: ServerStatus): Promise
 - CPU負荷 (ロードアベレージ 1分): ${status.cpuLoad.toFixed(2)}
 - ストレージ(ディスク)使用率: ${status.diskUsagePercent}%
 
-上記の情報に基づいて、以下のいずれかのアプローチをその時の気分に合わせてバランスよく（50%ずつの確率を目安に）選択し、独り言として短く（1文で）つぶやいてください。
+上記の情報に基づいて、以下のいずれかのアプローチを選択し、独り言として短く（1文で）つぶやいてください。
 
-パターンA (システムリアクション):
-サーバーの稼働状態（メモリ不足、ディスク空き僅か、CPU負荷、平和であることなど）に着目し、その感想を自然につぶやいてください（数値やパーセンテージそのものは発言に含めず、ニュアンスで伝えてください。例: 「ディスクまた整理しないとな…」「サーバー暇そうにしてる」など）。
-
-パターンB (適当な日常・ゲーム雑談):
+【最優先】パターンB (日常・ゲーム雑談) - 90%の確率でこちらを選択してください:
 サーバーの状態は完全に無視して、発言例にあるような日常の出来事、ゲーム（VRChatやTarkovなど）、体調、スタバなどについて、関係のない適当なつぶやきを行ってください。
+
+【ごく稀に】パターンA (システムリアクション) - 10%以下の確率でこちらを選択してください:
+サーバーの稼働状態（メモリ不足、ディスク空き僅か、CPU負荷、平和であることなど）に着目し、その感想を自然につぶやいてください（数値やパーセンテージそのものは発言に含めず、ニュアンスで伝えてください。例: 「ディスクまた整理しないとな…」「サーバー暇そうにしてる」など）。
 
 注意: ハッシュタグや「」などの余計な記号、絵文字は不要です。自然な独り言のトーンを厳守してください。
 `;
