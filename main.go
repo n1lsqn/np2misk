@@ -24,7 +24,7 @@ func postToMisskey(message string) error {
 	requestData := map[string]string{
 		"i":          os.Getenv("MISSKEY_ACCESS_TOKEN"),
 		"text":       message,
-		"visibility": "public",
+		"visibility": "home",
 	}
 
 	jsonData, err := json.Marshal(requestData)
