@@ -175,7 +175,10 @@ ${cleanNotes.map(n => `- ${n}`).join('\n')}
   try {
     const outputPath = path.join(__dirname, '../system_prompt.md');
     fs.writeFileSync(outputPath, promptTemplate, 'utf-8');
-  } catch (err) {}
+    console.log(`[System] system_prompt.md updated successfully at: ${outputPath}`);
+  } catch (err: any) {
+    console.error('[System] Failed to write system_prompt.md:', err.message);
+  }
 
   return promptTemplate;
 }
