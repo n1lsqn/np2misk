@@ -2,6 +2,8 @@ import axios from 'axios';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
+import { execSync } from 'child_process';
 
 // 親ディレクトリにある .env ファイルをロード
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -32,8 +34,44 @@ interface MisskeyNote {
   renoteId: string | null;
 }
 
-// 指定ミリ秒待機するユーティリティ
+interface ServerStatus {
+  cpuLoad: number;
+  memoryUsagePercent: number;
+  diskUsagePercent: number;
+}
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// サーバーのシステム情報を取得する関数
+function getServerStatus(): ServerStatus {
+  // 1. CPU ロードアベレージ (直近1分)
+  const cpuLoad = os.loadavg()[0];
+
+  // 2. メモリ使用率
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const memoryUsagePercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
+
+  // 3. ディスク使用率 (df コマンドからルートマウント / を解析)
+  let diskUsagePercent = 0;
+  try {
+    const stdout = execSync("df -h / | tail -1").toString().trim();
+    // 例: "/dev/sda1        40G   12G   28G  30% /" -> 30 を抽出
+    const fields = stdout.split(/\s+/);
+    const usePercentField = fields.find(f => f.endsWith('%'));
+    if (usePercentField) {
+      diskUsagePercent = parseInt(usePercentField.replace('%', ''), 10);
+    }
+  } catch (err) {
+    console.error('[System] Failed to fetch disk usage:', err);
+  }
+
+  return {
+    cpuLoad,
+    memoryUsagePercent,
+    diskUsagePercent
+  };
+}
 
 async function getUserId(username: string): Promise<string> {
   const payload: any = { username };
@@ -115,7 +153,7 @@ ${cleanNotes.map(n => `- ${n}`).join('\n')}
   return promptTemplate;
 }
 
-async function generateText(systemPrompt: string): Promise<string> {
+async function generateText(systemPrompt: string, status: ServerStatus): Promise<string> {
   if (!OPEN_WEBUI_API_KEY || OPEN_WEBUI_API_KEY.includes('ここにOpen WebUI')) {
     throw new Error('OPEN_WEBUI_API_KEY is not configured in .env');
   }
@@ -131,6 +169,17 @@ async function generateText(systemPrompt: string): Promise<string> {
   const baseModel = 'hf.co/lmstudio-community/Qwen3-8B-GGUF:q3_K_L';
   console.log(`[Open WebUI] Generating response using base model "${baseModel}"...`);
 
+  // AIに伝える現在のシステム状態プロンプト
+  const systemStateMessage = `
+現在のあなたのサーバーの稼働状態は以下の通りです。
+- メモリ使用率: ${status.memoryUsagePercent}%
+- CPU負荷 (ロードアベレージ 1分): ${status.cpuLoad.toFixed(2)}
+- ストレージ(ディスク)使用率: ${status.diskUsagePercent}%
+
+このシステム情報（メモリが足りなそう、ディスクが余裕、CPUが暇そう、または正常で平和など）に基づいて、思ったことを独り言として短く（1文で）つぶやいてください。
+注意: 「メモリ使用率が〇〇%で〜」のように生の数値やパーセンテージをそのまま発言に含めず、その状態から連想される感想（例: 「メモリ食いすぎ」「サーバー暇そう」「ディスクまだ余裕あるな」など）を自然につぶやいてください。ハッシュタグや絵文字は不要です。
+`;
+
   const response = await client.post('/api/chat/completions', {
     model: baseModel,
     messages: [
@@ -140,7 +189,7 @@ async function generateText(systemPrompt: string): Promise<string> {
       },
       {
         role: 'user',
-        content: '最近の出来事や思ったことについて、独り言を1文でつぶやいてください。ハッシュタグや「」などの余計な記号は使わず、自然にどうぞ。'
+        content: systemStateMessage
       }
     ],
     temperature: 0.85,
@@ -172,7 +221,6 @@ async function postToMisskey(text: string) {
 
 async function main() {
   try {
-    // ランダムな待機時間を計算 (0分 〜 MAX_DELAY_MINUTES分の間)
     const runNow = process.argv.includes('--now');
     const delayMinutes = runNow ? 0 : Math.floor(Math.random() * (MAX_DELAY_MINUTES + 1));
     const delayMs = delayMinutes * 60 * 1000;
@@ -185,11 +233,15 @@ async function main() {
       console.log(`[Scheduler] Starting execution immediately.`);
     }
 
+    // 0. サーバーの稼働状況を取得
+    const serverStatus = getServerStatus();
+    console.log('[System] Current Server Status:', serverStatus);
+
     // 1. 最新のつぶやきを取得して、キャラクター定義を動的に生成
     const systemPrompt = await fetchAndGenerateSystemPrompt();
 
-    // 2. そのキャラクター定義をもとに、AIにつぶやきを作らせる
-    const text = await generateText(systemPrompt);
+    // 2. サーバー情報とキャラクター定義をもとに、AIにつぶやきを作らせる
+    const text = await generateText(systemPrompt, serverStatus);
     console.log(`[Generator] Generated text: ${text}`);
 
     // 3. 生成されたつぶやきをMisskeyに投稿する
