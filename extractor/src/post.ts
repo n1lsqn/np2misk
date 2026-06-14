@@ -102,7 +102,7 @@ async function getUserNotes(userId: string, limit = 100, untilId?: string): Prom
 
 function cleanText(text: string): string {
   return text
-    .replace(/https?:\/\/[\s\S]+?\b/g, '') // URL削除
+    .replace(/https?:\/\/\S+/g, '') // URL削除
     .replace(/#\S+/g, '') // ハッシュタグ削除
     .trim();
 }
@@ -167,6 +167,7 @@ async function fetchAndGenerateSystemPrompt(): Promise<string> {
 1. 以下の発言例に近いトーンで回答してください。
 2. 丁寧すぎず、崩れすぎず、自然な独り言や雑談のトーンを維持してください。
 3. 知識をひけらかさず、適度に「適当なこと」を言うようにしてください。
+4. ハッシュタグ（例: #VRChat）を使用する場合は、タグの直後に必ず半角スペース（または改行）を挟み、後ろの文章がハッシュタグに巻き込まれないようにしてください。
 
 ## 発言例:
 ${cleanNotes.map(n => `- ${n}`).join('\n')}

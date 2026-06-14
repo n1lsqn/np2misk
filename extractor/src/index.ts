@@ -55,7 +55,7 @@ async function getUserNotes(userId: string, limit = 100): Promise<MisskeyNote[]>
 
 function cleanText(text: string): string {
   return text
-    .replace(/https?:\/\/[\s\S]+?\b/g, '') // URL削除
+    .replace(/https?:\/\/\S+/g, '') // URL削除
     .replace(/#\S+/g, '') // ハッシュタグ削除
     .trim();
 }
@@ -94,41 +94,21 @@ async function registerToOpenWebUI(systemPrompt: string) {
     
     // 常に削除を試みる (ID重複によるエラーを防ぐため)
     console.log(`[Open WebUI] Cleaning up existing model "${modelId}" if any...`);
-    const deletePaths = [`/api/models/delete`, `/api/v1/models/delete`, `/api/models/${modelId}`, `/api/v1/models/${modelId}`];
-    for (const dp of deletePaths) {
-      try {
-        if (dp.endsWith('/delete')) {
-          await client.delete(dp, { data: { id: modelId } });
-        } else {
-          await client.delete(dp);
-        }
-        console.log(`[Open WebUI] Delete succeeded on ${dp}`);
-      } catch (delErr: any) {
-        // 存在しない、または権限エラーなどの場合は無視して進む
-      }
+    try {
+      await client.post('/api/v1/models/model/delete', { id: modelId });
+      console.log(`[Open WebUI] Delete succeeded on model "${modelId}"`);
+    } catch (delErr: any) {
+      // 存在しない等のエラーは無視して進む
     }
 
     // 新規作成
-    const createPaths = ['/api/models/create', '/api/v1/models/create', '/api/models', '/api/v1/models'];
-    let created = false;
-    for (const cp of createPaths) {
-      try {
-        console.log(`[Open WebUI] Attempting creation via POST ${cp}...`);
-        await client.post(cp, payload);
-        console.log(`[Open WebUI] Model created successfully via ${cp}!`);
-        created = true;
-        break;
-      } catch (createError: any) {
-        console.log(`[Open WebUI] Creation failed on ${cp}:`, createError.response?.data || createError.message);
-      }
-    }
-
-    if (!created) {
-      throw new Error('All model creation paths failed.');
-    }
+    console.log(`[Open WebUI] Attempting creation via POST /api/v1/models/create...`);
+    await client.post('/api/v1/models/create', payload);
+    console.log(`[Open WebUI] Model created successfully!`);
 
   } catch (error: any) {
-    console.error('[Open WebUI] Failed to register model:', error.message);
+    const errorMsg = error.response?.data?.detail || error.response?.data || error.message;
+    console.error('[Open WebUI] Failed to register model:', typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
   }
 }
 
@@ -183,6 +163,7 @@ async function main() {
 1. 以下の発言例に近いトーンで回答してください。
 2. 丁寧すぎず、崩れすぎず、自然な独り言や雑談のトーンを維持してください。
 3. 知識をひけらかさず、適度に「適当なこと」を言うようにしてください。
+4. ハッシュタグ（例: #VRChat）を使用する場合は、タグの直後に必ず半角スペース（または改行）を挟み、後ろの文章がハッシュタグに巻き込まれないようにしてください。
 
 ## 発言例:
 ${cleanNotes.map(n => `- ${n}`).join('\n')}

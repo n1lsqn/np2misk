@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  spotify-np:
+    build: .
+    container_name: spotify-np
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./.env:/app/.env
+    restart: always
+
+  reply-bot:
+    build: ./extractor
+    container_name: reply-bot
+    command: npx ts-node src/reply.ts
+    env_file:
+      - .env
+    volumes:
+      - ./extractor:/app
+      - ./.env:/.env
+    restart: always
+
+  cron-bot:
+    build: ./extractor
+    container_name: cron-bot
+    command: npx ts-node src/scheduler.ts
+    env_file:
+      - .env
+    volumes:
+      - ./extractor:/app
+      - ./.env:/.env
+    restart: always

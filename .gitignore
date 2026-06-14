@@ -2,3 +2,7 @@
 .idea
 /.idea/
 /.env/
+node_modules/
+*.log
+/np2misk
+dist/

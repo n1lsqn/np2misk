@@ -27,31 +27,55 @@ AIエージェントが作業を終了し、タスクをクローズする際の
 
 ### 📌 概要
 Misskey上の `@n1lsqn` の過去ノートを自動取得してクレンジングし、Open WebUIのAPI（Qwen 8B）を利用して「にるさんらしい発言」を自動生成し、Misskeyに自動投稿するスクリプトです。
+URLやハッシュタグをパースして綺麗に消去し、ハッシュタグをつける場合は後に半角スペースを空けるようにAIに指示します。
 
 ### 📂 構成ファイル
-* [package.json](file:///home/n1lsqn/workspaces/np2misk/extractor/package.json): プロジェクト依存関係 (`axios`, `dotenv`, `ts-node`)
+* [package.json](file:///home/n1lsqn/workspaces/np2misk/extractor/package.json): プロジェクト依存関係 (`axios`, `dotenv`, `ts-node`, `ws`, `node-cron`)
 * [tsconfig.json](file:///home/n1lsqn/workspaces/np2misk/extractor/tsconfig.json): TypeScriptコンパイル設定
 * [src/post.ts](file:///home/n1lsqn/workspaces/np2misk/extractor/src/post.ts): 取得・生成・遅延・投稿の統合スクリプト
-* [.env](file:///home/n1lsqn/workspaces/np2misk/.env): 以下の環境変数を設定済み
-  * `MISSKEY_ENDPOINT_URL` (Misskeyホスト)
-  * `MISSKEY_ACCESS_TOKEN` (Misskey投稿用トークン)
-  * `OPEN_WEBUI_URL` (Open WebUIのホスト)
-  * `OPEN_WEBUI_API_KEY` (Open WebUIのAPIキー)
+* [src/index.ts](file:///home/n1lsqn/workspaces/np2misk/extractor/src/index.ts): スタイル分析 & Open WebUIモデル登録スクリプト
+* [.env](file:///home/n1lsqn/workspaces/np2misk/.env): 環境変数設定
 
-### 🚀 実行コマンド
-* **通常実行（ランダム最大3時間遅延後に投稿）:**
-  ```bash
-  cd extractor && npx ts-node src/post.ts
-  ```
-* **即時実行（テスト用・遅延なし）:**
-  ```bash
-  cd extractor && npx ts-node src/post.ts --now
-  ```
+---
 
-### ⏰ 定期実行設定 (Cron)
-12時間ごとに自動で起動し、毎回0〜3時間のランダムな遅延を経てつぶやかせる設定です。
-`crontab -e` で以下の設定を追加します。
+## 🤖 4. 追加機能: リアルタイム自動返信システム (Misskey Reply Bot)
 
-```cron
-0 */12 * * * cd /home/n1lsqn/workspaces/np2misk/extractor && npx ts-node src/post.ts >> /home/n1lsqn/workspaces/np2misk/extractor/cron.log 2>&1
+### 📌 概要
+Misskey のストリーミング API (WebSocket) でボットアカウントへのリプライやメンションを常時監視し、届いたメッセージに対して Open WebUI の LLM で適当な返信を生成し、即座に自動で返信する機能です。同一のノートIDに対するイベント重複を検知・排除する仕組みが組み込まれています。
+
+### 📂 構成ファイル
+* [src/reply.ts](file:///home/n1lsqn/workspaces/np2misk/extractor/src/reply.ts): WebSocket監視と自動返信の統合スクリプト
+
+---
+
+## 🐋 5. 動作環境と管理方法 (Docker Compose 一元管理)
+
+ホスト側のシステムを汚さず、すべてのボットサービスをコンテナ内で自動起動・一元管理します。
+
+### 📂 構成ファイル
+* [docker-compose.yml](file:///home/n1lsqn/workspaces/np2misk/docker-compose.yml): 3つのサービスを一括定義
+* [Dockerfile](file:///home/n1lsqn/workspaces/np2misk/Dockerfile): Spotify NP投稿サービス用 (Go)
+* [extractor/Dockerfile](file:///home/n1lsqn/workspaces/np2misk/extractor/Dockerfile): 返信ボット & 定期実行スケジューラ用 (Node.js)
+* [src/scheduler.ts](file:///home/n1lsqn/workspaces/np2misk/extractor/src/scheduler.ts): コンテナ内で定期投稿スケジュール（毎日 0,6,12,18時）を管理する `node-cron` スクリプト
+
+### 📋 コンテナサービス一覧
+1. **`spotify-np`** (Go): Spotify 楽曲監視 & 投稿
+2. **`reply-bot`** (TS): WebSocket によるリアルタイム自動返信
+3. **`cron-bot`** (TS): `node-cron` による 6時間ごとのつぶやき投稿
+
+### 🚀 実行手順
+```bash
+# コンテナのビルドとバックグラウンド起動
+docker compose up -d --build
+
+# コンテナの状態確認
+docker compose ps
+
+# ログの確認
+docker compose logs -f
 ```
+
+> [!IMPORTANT]
+> **ホスト側の競合解除の注意点:**
+> * ホスト側で `systemd` による `np2misk.service` が有効になっている場合は、ポート3000の競合を避けるために `sudo systemctl stop np2misk` & `sudo systemctl disable np2misk` で停止・無効化してください。
+> * 定期実行はコンテナ内の `cron-bot` が担当するため、ホスト側の `crontab` に登録されていた `post.ts` の項目は削除してください。
