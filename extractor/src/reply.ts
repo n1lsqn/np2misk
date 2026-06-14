@@ -162,14 +162,29 @@ async function startBot() {
             }
 
             try {
-              // 返信を生成
-              const replyContent = await generateReply(loadSystemPrompt(), sender.name || sender.username, noteText);
+              let replyContent = '';
+              const maxAttempts = 3;
+
+              for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                  replyContent = await generateReply(loadSystemPrompt(), sender.name || sender.username, noteText);
+                  break; // 成功したらループを抜ける
+                } catch (err: any) {
+                  console.warn(`[Warning] Generation failed (attempt ${attempt}/${maxAttempts}): ${err.message}`);
+                  if (attempt === maxAttempts) {
+                    throw err; // 3回すべて失敗した場合はエラーを投げて終了
+                  }
+                  console.log('[Info] Retrying in 2 seconds...');
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+              }
+
               console.log(`[Generator] Generated reply: "${replyContent}"`);
 
               // 返信を投稿
               await sendReply(replyContent, note.id);
             } catch (replyErr: any) {
-              console.error('[Error] Failed to process reply:', replyErr.message);
+              console.error('[Error] Failed to process reply after all attempts:', replyErr.message);
             }
           }
         }
