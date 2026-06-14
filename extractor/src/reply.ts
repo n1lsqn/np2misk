@@ -72,6 +72,7 @@ async function generateReply(promptText: string, senderName: string, replyText: 
 
   const generated = response.data.choices?.[0]?.message?.content;
   if (!generated) {
+    console.error('[Open WebUI] Invalid response data:', JSON.stringify(response.data));
     throw new Error('Failed to get content from Open WebUI response');
   }
 
