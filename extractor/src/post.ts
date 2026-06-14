@@ -242,6 +242,29 @@ async function generateText(systemPrompt: string, status: ServerStatus): Promise
   return generated.trim();
 }
 
+async function getRecentBotNotes(): Promise<string[]> {
+  if (!MISSKEY_ACCESS_TOKEN) return [];
+  try {
+    // 自分のIDを取得
+    const iRes = await axios.post(`${MISSKEY_HOST}/api/i`, { i: MISSKEY_ACCESS_TOKEN });
+    const myId = iRes.data.id;
+    
+    // 直近のノートを取得
+    const notesRes = await axios.post(`${MISSKEY_HOST}/api/users/notes`, {
+      userId: myId,
+      limit: 15,
+      i: MISSKEY_ACCESS_TOKEN
+    });
+    
+    return notesRes.data
+      .map((n: any) => (n.text || '').trim())
+      .filter((t: string) => t.length > 0);
+  } catch (err: any) {
+    console.warn('[Warning] Failed to fetch recent bot notes for duplicate check:', err.message);
+    return [];
+  }
+}
+
 async function postToMisskey(text: string) {
   if (!MISSKEY_ACCESS_TOKEN) {
     throw new Error('MISSKEY_ACCESS_TOKEN is not configured in .env');
@@ -278,11 +301,24 @@ async function main() {
     // 1. 最新のつぶやきを取得して、キャラクター定義を動的に生成
     const systemPrompt = await fetchAndGenerateSystemPrompt();
 
-    // 2. サーバー情報とキャラクター定義をもとに、AIにつぶやきを作らせる
-    const text = await generateText(systemPrompt, serverStatus);
-    console.log(`[Generator] Generated text: ${text}`);
+    // 2. ボット自身の直近の投稿履歴を取得
+    console.log('[Misskey] Fetching recent bot posts to avoid duplicates...');
+    const recentNotes = await getRecentBotNotes();
 
-    // 3. 生成されたつぶやきをMisskeyに投稿する
+    // 3. サーバー情報とキャラクター定義をもとに、AIにつぶやきを作らせる (重複があれば最大3回再試行)
+    let text = '';
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      text = await generateText(systemPrompt, serverStatus);
+      if (!recentNotes.includes(text)) {
+        break; // 重複がなければOK
+      }
+      console.warn(`[Generator] Duplicate text detected: "${text}" (attempt ${attempt}/${maxAttempts}). Retrying generation...`);
+    }
+
+    console.log(`[Generator] Final generated text: ${text}`);
+
+    // 4. 生成されたつぶやきをMisskeyに投稿する
     await postToMisskey(text);
   } catch (error: any) {
     console.error('Error in post pipeline:', error.response?.data || error.message);
