@@ -240,14 +240,19 @@ func get_spotify_np() (is_playing bool, title string, artist string, album strin
 
 	body, _ := io.ReadAll(resp.Body)
 
+	if resp.StatusCode == http.StatusNoContent || len(body) == 0 {
+		return false, "", "", "", "", 0
+	}
+
 	if resp.StatusCode == http.StatusUnauthorized {
-		fmt.Println("Error: オーソライズに失敗しています。`SPOTIFY_REFRESH_TOKEN` を確認してください。")
+		log.Println("Error: オーソライズに失敗しています。`SPOTIFY_REFRESH_TOKEN` を確認してください。")
+		return false, "", "", "", "", 0
 	}
 
 	var jsonObj interface{}
 	if err := json.Unmarshal(body, &jsonObj); err != nil {
-		fmt.Println(string(body))
-		log.Fatalf("JSON unmarshal で問題が生じました。: %s\nResponse body: %s", err, string(body))
+		log.Printf("JSON unmarshal で問題が生じました: %s (Response body: %s)", err, string(body))
+		return false, "", "", "", "", 0
 	}
 
 	if isNil(jsonObj.(map[string]interface{})["is_playing"]) {
