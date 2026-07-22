@@ -79,3 +79,51 @@ docker compose logs -f
 > **ホスト側の競合解除の注意点:**
 > * ホスト側で `systemd` による `np2misk.service` が有効になっている場合は、ポート3000の競合を避けるために `sudo systemctl stop np2misk` & `sudo systemctl disable np2misk` で停止・無効化してください。
 > * 定期実行はコンテナ内の `cron-bot` が担当するため、ホスト側の `crontab` に登録されていた `post.ts` の項目は削除してください。
+
+---
+
+## 🔑 6. Spotify 連携と認証トークンの取得 (Spotify Auth & Refresh Token)
+
+Spotifyの現在再生中の楽曲を取得して投稿する機能（`spotify-np`）の動作には、Spotify APIの**リフレッシュトークン（Refresh Token）**が必要です。
+
+以下の手順で、リフレッシュトークンを取得して `.env` に設定できます。
+
+### 📋 事前準備（依存関係のインストール）
+スクリプト [get-refleshtoken.py](file:///home/n1lsqn/workspaces/np2misk/get-refleshtoken.py) を動かすために必要な `requests` と `flask` パッケージをインストールします。システム環境が制限されている（PEP 668）場合は、`--break-system-packages` を指定してユーザー環境にインストールします。
+
+```bash
+# pipの導入（未導入の場合）
+curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --user --break-system-packages
+
+# 依存パッケージのインストール
+python3 -m pip install --user --break-system-packages requests flask
+```
+
+### 🚀 取得手順
+
+1. **スクリプトの実行:**
+   ```bash
+   python3 get-refleshtoken.py
+   ```
+   *(※ すでにポート 5000 で起動している場合は、新しく起動し直す必要はありません。)*
+
+2. **リモート接続時のポートフォワーディング（手元のPCからアクセスする場合）:**
+   サーバーがリモート環境にある場合は、手元のPCのターミナルで以下のポートフォワーディングコマンドを実行します。
+   ```bash
+   ssh -L 5000:[::1]:5000 n1lsqn@192.168.1.7
+   ```
+
+3. **ブラウザでのアクセスと連携:**
+   手元のPCのブラウザから **[http://localhost:5000/login](http://localhost:5000/login)** にアクセスし、Spotifyにログインして認証（連携）します。
+
+4. **トークンの取得:**
+   連携完了後、ブラウザ画面に以下のようにリフレッシュトークンが表示されます。
+   ```text
+   Refresh Token: <取得されたトークン>
+   ```
+
+5. **環境変数への適用:**
+   取得したトークンを、プロジェクトルートの `.env` ファイルに設定します。
+   ```env
+   SPOTIFY_REFRESH_TOKEN=取得したトークン
+   ```
