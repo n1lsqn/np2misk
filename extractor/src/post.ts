@@ -14,6 +14,7 @@ const USERNAME = 'n1lsqn';
 
 const OPEN_WEBUI_URL = process.env.OPEN_WEBUI_URL || 'http://localhost:3000';
 const OPEN_WEBUI_API_KEY = process.env.OPEN_WEBUI_API_KEY || '';
+const OPEN_WEBUI_MODEL = process.env.OPEN_WEBUI_MODEL || 'hf.co/lmstudio-community/Qwen3-8B-GGUF:q3_K_L';
 
 // ランダム待機の設定 (最大3時間 = 180分)
 const MAX_DELAY_MINUTES = 180;
@@ -158,7 +159,25 @@ async function fetchAndGenerateSystemPrompt(): Promise<string> {
     throw new Error('No target posts found to mimic.');
   }
 
-  const promptTemplate = `# キャラクター定義: @${USERNAME}
+  const promptPath = path.join(__dirname, '../system_prompt.md');
+  let basePrompt = '';
+
+  try {
+    if (fs.existsSync(promptPath)) {
+      const existing = fs.readFileSync(promptPath, 'utf-8');
+      const markerIndex = existing.indexOf('<!-- EXAMPLES_START -->');
+      if (markerIndex !== -1) {
+        // マーカーの直前までをベースとして残す
+        basePrompt = existing.substring(0, markerIndex + '<!-- EXAMPLES_START -->'.length);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[System] Failed to read existing system_prompt.md headers, using fallback:', err.message);
+  }
+
+  // 万が一ファイルやマーカーがなかった場合のフォールバック定義
+  if (!basePrompt) {
+    basePrompt = `# キャラクター定義: @${USERNAME}
 
 あなたは Misskey ユーザー「@${USERNAME}」を模倣するAIアシスタントです。
 以下の発言例（実際の投稿）を注意深く分析し、その口調、文体、関心事、ユーモア、文字使い（ひらがな・漢字の比率や絵文字の使用頻度）を忠実に再現してください。
@@ -169,14 +188,33 @@ async function fetchAndGenerateSystemPrompt(): Promise<string> {
 3. 知識をひけらかさず、適度に「適当なこと」を言うようにしてください。
 4. ハッシュタグ（例: #VRChat）を使用する場合は、タグの直後に必ず半角スペース（または改行）を挟み、後ろの文章がハッシュタグに巻き込まれないようにしてください。
 
+⚠️最重要ルール：
+- 「発言例」に提示されている文章そのものをそのまま出力（コピー）することは絶対に禁止します。
+- 発言例はあくまで「口調」や「文体」の参考にするためのものであり、つぶやく内容は自分自身で新しく創作してください。
+
+## 投稿パターンとアプローチの選択:
+サーバー状態の報告を受けたら、以下のいずれかのアプローチを選択し、独り言としてつぶやいてください。
+
+- 【最優先】パターンB (日常の短文雑談) - 80%の確率で選択:
+  サーバーの状態は完全に無視して、発言例のトーンに合わせた日常の出来事、ゲーム（VRChatやTarkov、その他の話題）、体調、食べたいものなどについて、短い1文で「あなた自身の新しいつぶやき」を行ってください。発言例のコピペは禁止します。
+
+- 【ときたま】パターンC (日常の長文雑談) - 10%の確率で選択:
+  サーバーの状態は無視して、日常のちょっとしたエピソードやゲームの回想、雑談（3〜4文程度、最大100文字程度）を語ってください。語り口は発言例を参考にしつつ、内容は新しく創作してください。
+
+- 【ごく稀に】パターンA (システムリアクション) - 10%の確率で選択:
+  サーバーの稼働状態（メモリ不足、ディスク空き僅か、CPU負荷、平和であることなど）に着目し、その感想を短い1文で自然につぶやいてください（数値やパーセンテージそのものは発言に含めず、ニュアンスで伝えてください）。
+
+注意: ハッシュタグや「」などの余計な記号、絵文字は不要です。自然な独り言のトーンを厳守してください。
+
 ## 発言例:
-${cleanNotes.map(n => `- ${n}`).join('\n')}
-`;
+<!-- EXAMPLES_START -->`;
+  }
+
+  const promptTemplate = `${basePrompt}\n${cleanNotes.map(n => `- ${n}`).join('\n')}\n<!-- EXAMPLES_END -->\n`;
 
   try {
-    const outputPath = path.join(__dirname, '../system_prompt.md');
-    fs.writeFileSync(outputPath, promptTemplate, 'utf-8');
-    console.log(`[System] system_prompt.md updated successfully at: ${outputPath}`);
+    fs.writeFileSync(promptPath, promptTemplate, 'utf-8');
+    console.log(`[System] system_prompt.md updated successfully at: ${promptPath}`);
   } catch (err: any) {
     console.error('[System] Failed to write system_prompt.md:', err.message);
   }
@@ -197,32 +235,46 @@ async function generateText(systemPrompt: string, status: ServerStatus): Promise
     }
   });
 
-  const baseModel = 'hf.co/lmstudio-community/Qwen3-8B-GGUF:q3_K_L';
-  console.log(`[Open WebUI] Generating response using base model "${baseModel}"...`);
+  // プログラム（TypeScript）側で確率に基づいてアプローチパターンを決定する
+  const rand = Math.random() * 100;
+  let chosenPattern = 'B';
+  if (rand < 80) {
+    chosenPattern = 'B';
+  } else if (rand < 90) {
+    chosenPattern = 'C';
+  } else {
+    chosenPattern = 'A';
+  }
 
-  // AIに伝える現在のシステム状態プロンプト
-  const systemStateMessage = `
+  console.log(`[Generator] Selected pattern: ${chosenPattern} (rand: ${rand.toFixed(1)})`);
+
+  let systemStateMessage = '';
+  if (chosenPattern === 'B') {
+    systemStateMessage = `
+日常の出来事、ゲーム（VRChatやTarkov、その他の話題）、体調、食べたいものなどについて、短い1文で「あなた自身の新しいつぶやき」を行ってください。
+注意：発言例の文章をそのままコピー（コピペ）することは絶対に禁止します。発言例のトーン（口調や文字使い）だけを参考にして、新しい内容を1文でつぶやいてください。
+`;
+  } else if (chosenPattern === 'C') {
+    systemStateMessage = `
+日常のちょっとした出来事やゲームの回想、雑談などを、少し長め（3〜4文程度、最大100文字程度）に語ってください。
+注意：発言例の文章をそのままコピーすることは絶対に禁止します。発言例のトーンを参考に、新しい内容を創作して語ってください。
+`;
+  } else {
+    systemStateMessage = `
 現在のあなたのサーバーの稼働状態は以下の通りです。
 - メモリ使用率: ${status.memoryUsagePercent}%
 - CPU負荷 (ロードアベレージ 1分): ${status.cpuLoad.toFixed(2)}
 - ストレージ(ディスク)使用率: ${status.diskUsagePercent}%
 
-上記の情報に基づいて、以下のいずれかのアプローチを選択し、独り言としてつぶやいてください。
-
-【最優先】パターンB (日常の短文雑談) - 80%の確率でこちらを選択してください:
-サーバーの状態は完全に無視して、発言例にあるような日常の出来事、ゲーム（VRChatやTarkovなど）、体調、スタバなどについて、短い1文で適当なつぶやきを行ってください。
-
-【ときたま】パターンC (日常の長文雑談) - 10%の確率でこちらを選択してください:
-サーバーの状態は無視して、発言例にあるエピソード（例: スタバへ行こうとして逆方向の電車に乗った話など）のように、少し長めの日常の出来事やゲームの回想、雑談（3〜4文程度、最大100文字程度）を語ってください。
-
-【ごく稀に】パターンA (システムリアクション) - 10%の確率でこちらを選択してください:
-サーバーの稼働状態（メモリ不足、ディスク空き僅か、CPU負荷、平和であることなど）に着目し、その感想を短い1文で自然につぶやいてください（数値やパーセンテージそのものは発言に含めず、ニュアンスで伝えてください）。
-
-注意: ハッシュタグや「」などの余計な記号、絵文字は不要です。自然な独り言のトーンを厳守してください。
+上記の稼働状態（メモリ不足、ディスク空き僅か、CPU負荷、または平和であることなど）に着目し、その感想を短い1文で自然につぶやいてください。
+注意：数値やパーセンテージそのものは発言に含めず、ニュアンスで伝えてください。発言例のトーンを厳守してください。
 `;
+  }
+
+  console.log(`[Open WebUI] Generating response using model "${OPEN_WEBUI_MODEL}"...`);
 
   const response = await client.post('/api/chat/completions', {
-    model: baseModel,
+    model: OPEN_WEBUI_MODEL,
     messages: [
       {
         role: 'system',

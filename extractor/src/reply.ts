@@ -11,6 +11,7 @@ const MISSKEY_HOST = process.env.MISSKEY_ENDPOINT_URL || 'https://misskey.n1l.de
 const MISSKEY_ACCESS_TOKEN = process.env.MISSKEY_ACCESS_TOKEN || '';
 const OPEN_WEBUI_URL = process.env.OPEN_WEBUI_URL || 'http://localhost:3000';
 const OPEN_WEBUI_API_KEY = process.env.OPEN_WEBUI_API_KEY || '';
+const OPEN_WEBUI_MODEL = process.env.OPEN_WEBUI_MODEL || 'hf.co/lmstudio-community/Qwen3-8B-GGUF:q3_K_L';
 
 if (!MISSKEY_ACCESS_TOKEN) {
   console.error('[Error] MISSKEY_ACCESS_TOKEN is not configured.');
@@ -47,7 +48,7 @@ async function generateReply(promptText: string, senderName: string, replyText: 
     }
   });
 
-  const baseModel = 'hf.co/lmstudio-community/Qwen3-8B-GGUF:q3_K_L';
+
   const systemPrompt = loadSystemPrompt();
 
   const userInstruction = `
@@ -61,7 +62,7 @@ async function generateReply(promptText: string, senderName: string, replyText: 
   console.log(`[Open WebUI] Requesting reply generation to: "${replyText}"...`);
 
   const response = await client.post('/api/chat/completions', {
-    model: baseModel,
+    model: OPEN_WEBUI_MODEL,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userInstruction }

@@ -10,9 +10,6 @@ const MISSKEY_HOST = process.env.MISSKEY_ENDPOINT_URL || 'https://misskey.n1l.de
 const MISSKEY_ACCESS_TOKEN = process.env.MISSKEY_ACCESS_TOKEN || '';
 const USERNAME = 'n1lsqn';
 
-const OPEN_WEBUI_URL = process.env.OPEN_WEBUI_URL || 'http://localhost:3000';
-const OPEN_WEBUI_API_KEY = process.env.OPEN_WEBUI_API_KEY || '';
-
 interface MisskeyUser {
   id: string;
   username: string;
@@ -60,57 +57,6 @@ function cleanText(text: string): string {
     .trim();
 }
 
-async function registerToOpenWebUI(systemPrompt: string) {
-  if (!OPEN_WEBUI_API_KEY || OPEN_WEBUI_API_KEY.includes('ここにOpen WebUIで取得した')) {
-    console.log('\n[Open WebUI] OPEN_WEBUI_API_KEY is not set. Skipping auto-registration.');
-    return;
-  }
-
-  const client = axios.create({
-    baseURL: OPEN_WEBUI_URL,
-    headers: {
-      'Authorization': `Bearer ${OPEN_WEBUI_API_KEY}`,
-      'Content-Type': 'application/json',
-    }
-  });
-
-  const modelId = `n1lsqn-bot-v4`;
-  const modelName = `@n1lsqn (Misskey)`;
-  const payload = {
-    id: modelId,
-    name: modelName,
-    base_model_id: 'qwen3.5-4b:latest',
-    meta: {
-      description: `Misskey の @${USERNAME} の投稿から自動生成されたシミュレータボット`,
-      system: systemPrompt,
-    },
-    params: {
-      system: systemPrompt
-    }
-  };
-
-  try {
-    console.log(`\n[Open WebUI] Connecting to ${OPEN_WEBUI_URL}...`);
-    
-    // 常に削除を試みる (ID重複によるエラーを防ぐため)
-    console.log(`[Open WebUI] Cleaning up existing model "${modelId}" if any...`);
-    try {
-      await client.post('/api/v1/models/model/delete', { id: modelId });
-      console.log(`[Open WebUI] Delete succeeded on model "${modelId}"`);
-    } catch (delErr: any) {
-      // 存在しない等のエラーは無視して進む
-    }
-
-    // 新規作成
-    console.log(`[Open WebUI] Attempting creation via POST /api/v1/models/create...`);
-    await client.post('/api/v1/models/create', payload);
-    console.log(`[Open WebUI] Model created successfully!`);
-
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.detail || error.response?.data || error.message;
-    console.error('[Open WebUI] Failed to register model:', typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
-  }
-}
 
 async function main() {
   try {
@@ -173,8 +119,7 @@ ${cleanNotes.map(n => `- ${n}`).join('\n')}
     fs.writeFileSync(outputPath, promptTemplate, 'utf-8');
     console.log(`System prompt generated successfully at: ${outputPath}`);
 
-    // Open WebUI へのモデル登録を実行
-    await registerToOpenWebUI(promptTemplate);
+
 
   } catch (error) {
     console.error('Error occurred:', error);

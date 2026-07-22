@@ -45,6 +45,8 @@ def callback():
         data=data,
         timeout=None
     )
+    if res.status_code != 200:
+        print("ERROR RESPONSE:", res.status_code, res.text)
     res.raise_for_status()
     tokens = res.json()
     return f"Refresh Token: {tokens.get('refresh_token')}"
